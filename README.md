@@ -1,6 +1,6 @@
 # Live Translation + Reply Assistant v2
 
-**即時翻譯 + AI 回覆助理** — 與 [jt-live-whisper](https://github.com/KoljaB/RealtimeSTT) 整合，提供即時語音翻譯監控與 AI 雙向回覆建議。
+**即時翻譯 + AI 回覆助理** — 與 [jt-live-whisper](https://github.com/jasoncheng7115/jt-live-whisper) 整合，提供即時語音翻譯監控與 AI 雙向回覆建議。
 
 ---
 
