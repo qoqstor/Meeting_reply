@@ -131,11 +131,36 @@ Meeting_reply/
 
 ---
 
+## 安裝 jt-live-whisper（即時翻譯引擎）
+
+本工具的即時翻譯功能依賴 [jt-live-whisper](https://github.com/jasoncheng7115/jt-live-whisper)。
+
+### 方法一：下載 Release 版（建議，免安裝 Python）
+
+1. 前往 [jt-live-whisper Releases](https://github.com/jasoncheng7115/jt-live-whisper/releases)
+2. 下載最新的 **jt-live-whisper-offline** 壓縮包（約 2 GB，含模型）
+3. 解壓縮至任意目錄（例如 `C:\jt-live-whisper\`）
+
+### 方法二：從原始碼執行
+
+```bash
+git clone https://github.com/jasoncheng7115/jt-live-whisper.git
+cd jt-live-whisper
+pip install -r requirements.txt
+```
+
+### 設定路徑
+
+啟動 `sei_reply_assistant.py` 後，點擊 **🎙 開啟即時翻譯** 旁的資料夾圖示，選擇 jt-live-whisper 的安裝目錄（含 `start.ps1` 或 `jt-live-whisper.exe` 的資料夾）。路徑會自動記憶於 `settings.json`。
+
+> **注意**：未設定 jt-live-whisper 時，即時翻譯與自動觸發功能無法使用，但 AI 回覆、TTS、匯出功能仍可運作。
+
+---
+
 ## 系統需求
 
 - **OS**：Windows 10/11 x64
-- **Python**：3.10+
-- **依賴**：`jt-live-whisper`（需另行安裝，提供即時 ASR 翻譯）
+- **Python**：3.10+（若使用 Release 版 jt-live-whisper 則不需要 Python 執行 JTW 本身）
 
 ---
 
