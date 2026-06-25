@@ -74,6 +74,9 @@ PROFILES_DIR.mkdir(exist_ok=True)
 
 JTW_EXE = APP_DIR / "jtw" / "jt-live-whisper.exe"
 
+VERSION = "2.1.0"
+GITHUB_RELEASES_API = "https://api.github.com/repos/qoqstor/Meeting_reply/releases/latest"
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 def _load_settings() -> dict:
     if SETTINGS_FILE.exists():
@@ -85,6 +88,37 @@ def _load_settings() -> dict:
 
 def _save_settings(s: dict):
     SETTINGS_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _check_update():
+    """Background thread: compare GitHub latest release tag with VERSION.
+    Pushes update_available event if newer; silently swallows all errors."""
+    try:
+        req = urllib.request.Request(
+            GITHUB_RELEASES_API,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"SEI-Reply-Assistant/{VERSION}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read().decode())
+        latest = data["tag_name"].lstrip("v")
+        if (tuple(int(x) for x in latest.split("."))
+                > tuple(int(x) for x in VERSION.split("."))):
+            asset_url = next(
+                (a["browser_download_url"] for a in data.get("assets", [])
+                 if a["name"].lower().startswith("sei_") and a["name"].endswith(".zip")),
+                None,
+            )
+            if asset_url:
+                _ui_queue.put({
+                    "type": "update_available",
+                    "version": latest,
+                    "url": asset_url,
+                    "notes": data.get("body", "")[:150],
+                })
+    except Exception:
+        pass
 
 _settings = _load_settings()
 
@@ -101,11 +135,11 @@ def _jtw_log_dirs() -> list[str]:
     return list(dict.fromkeys(dirs))
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-MAX_SENTENCES         = 7
+MAX_SENTENCES         = 30
 MAX_MINUTES           = 10
 MAX_HISTORY_TURNS     = 10   # keep last N user/assistant pairs
 OLLAMA_HOST           = "http://localhost:11434"
-AUTO_TRIGGER_DEBOUNCE = 3.0  # seconds after last sentence-ending punctuation
+AUTO_TRIGGER_DEBOUNCE = 8.0  # seconds after last sentence-ending punctuation
 
 JTW_MODES = [
     ("ja_zh",  "日中雙向"),
@@ -342,12 +376,12 @@ def export_word(path: str, records: list[dict]):
     doc.save(path)
 
 # ── Log monitor ───────────────────────────────────────────────────────────────
-LINE_RE = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s*[▶◀]\s*\[([日中])\]\s*(.+)$')
+LINE_RE = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s*(?:[▶◀]\s*)?\[([日中])\]\s*(.+)$')
 
 def _find_latest_log() -> str | None:
     files = []
     for d in _jtw_log_dirs():
-        files.extend(glob.glob(os.path.join(d, "日中雙向_逐字稿_*.txt")))
+        files.extend(glob.glob(os.path.join(d, "*逐字稿_*.txt")))
     return max(files, key=os.path.getmtime) if files else None
 
 def log_monitor():
@@ -488,6 +522,9 @@ class App:
         self._poll()
         self._check_auto_trigger()
         self.root.after(300, self._check_jtw_dir)
+
+        # Check for newer release in background (silent if no internet)
+        threading.Thread(target=_check_update, daemon=True).start()
 
     # ── jt-live-whisper availability check ───────────────────────────────────
     def _check_jtw_dir(self):
@@ -633,12 +670,16 @@ class App:
                  bg=self.BG, fg=self.MUTED, font=("Arial", 9),
                  anchor="w", padx=10).pack(fill="x", pady=(3, 0))
 
-        # Live transcript (ja left, zh right)
+        # Main resizable area: transcript (top) + reply (bottom) split by sash
+        main_pane = ttk.PanedWindow(self.root, orient="vertical")
+        main_pane.pack(fill="both", expand=True, padx=6, pady=(5, 0))
+
+        # ── Top pane: live transcript (ja left, zh right) ──────────────────────
         trans_outer = tk.LabelFrame(
-            self.root, text="  即時翻譯  ",
+            main_pane, text="  即時翻譯  ",
             bg=self.BG, fg=self.GREEN, font=("Arial", 8, "bold"),
             padx=4, pady=4)
-        trans_outer.pack(fill="both", expand=True, padx=6, pady=(5, 0))
+        main_pane.add(trans_outer, weight=3)
         trans_inner = tk.Frame(trans_outer, bg=self.BG)
         trans_inner.pack(fill="both", expand=True)
 
@@ -665,9 +706,13 @@ class App:
             w.tag_configure("text_ja", foreground=self.GREEN, font=("Meiryo", 10))
             w.tag_configure("text_zh", foreground=self.FG,    font=("Arial", 10))
 
+        # ── Bottom pane: generate button + reply areas ─────────────────────────
+        bottom_frame = tk.Frame(main_pane, bg=self.BG)
+        main_pane.add(bottom_frame, weight=2)
+
         # Generate button + auto-trigger
-        gen_f = tk.Frame(self.root, bg=self.BG, pady=4)
-        gen_f.pack(fill="x", padx=6)
+        gen_f = tk.Frame(bottom_frame, bg=self.BG, pady=4)
+        gen_f.pack(fill="x")
         self._gen_btn = tk.Button(
             gen_f,
             text=f"▶  生成回覆建議（最近 {MAX_SENTENCES} 句 / {MAX_MINUTES} 分鐘）",
@@ -682,20 +727,20 @@ class App:
             auto_f, text="自動觸發", variable=self._auto_reply_var,
             bg=self.BG, fg=self.GREEN, selectcolor=self.CARD,
             activebackground=self.BG, font=("Arial", 9)).pack(anchor="w")
-        tk.Label(auto_f, text="句尾標點後 3 秒",
+        tk.Label(auto_f, text="句尾標點後 8 秒",
                  bg=self.BG, fg=self.MUTED, font=("Arial", 7)).pack(anchor="w")
 
         # Reply areas: ja (left) + zh draft (right)
         reply_outer = tk.LabelFrame(
-            self.root, text="  建議回覆  ",
+            bottom_frame, text="  建議回覆  ",
             bg=self.BG, fg=self.BLUE, font=("Arial", 8, "bold"),
             padx=4, pady=4)
-        reply_outer.pack(fill="x", padx=6, pady=(2, 2))
+        reply_outer.pack(fill="both", expand=True, pady=(2, 2))
         reply_inner = tk.Frame(reply_outer, bg=self.BG)
-        reply_inner.pack(fill="x")
+        reply_inner.pack(fill="both", expand=True)
 
         ja_reply_f = tk.Frame(reply_inner, bg=self.BG)
-        ja_reply_f.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        ja_reply_f.pack(side="left", fill="both", expand=True, padx=(0, 2))
         ja_hdr = tk.Frame(ja_reply_f, bg=self.BG)
         ja_hdr.pack(fill="x")
         tk.Label(ja_hdr, text="🤖 AI 日文回覆", bg=self.BG, fg=self.BLUE,
@@ -709,12 +754,12 @@ class App:
                   bg=self.CARD, fg=self.BLUE, relief="flat",
                   padx=6, font=("Arial", 8), cursor="hand2").pack(side="right", padx=2)
         self._reply_ja = scrolledtext.ScrolledText(
-            ja_reply_f, height=4, bg=self.CARD, fg=self.BLUE,
+            ja_reply_f, bg=self.CARD, fg=self.BLUE,
             font=("Meiryo", 11), relief="flat", wrap="word", state="disabled")
-        self._reply_ja.pack(fill="x")
+        self._reply_ja.pack(fill="both", expand=True)
 
         zh_reply_f = tk.Frame(reply_inner, bg=self.BG)
-        zh_reply_f.pack(side="left", fill="x", expand=True, padx=(2, 0))
+        zh_reply_f.pack(side="left", fill="both", expand=True, padx=(2, 0))
         zh_hdr = tk.Frame(zh_reply_f, bg=self.BG)
         zh_hdr.pack(fill="x")
         tk.Label(zh_hdr, text="📝 中文草稿（您可說）", bg=self.BG, fg=self.PINK,
@@ -728,13 +773,13 @@ class App:
                   bg=self.CARD, fg=self.PINK, relief="flat",
                   padx=6, font=("Arial", 8), cursor="hand2").pack(side="right", padx=2)
         self._reply_zh = scrolledtext.ScrolledText(
-            zh_reply_f, height=4, bg=self.CARD, fg=self.PINK,
+            zh_reply_f, bg=self.CARD, fg=self.PINK,
             font=("Arial", 11), relief="flat", wrap="word", state="disabled")
-        self._reply_zh.pack(fill="x")
+        self._reply_zh.pack(fill="both", expand=True)
 
         # Bottom controls
-        btn_row = tk.Frame(self.root, bg=self.BG, pady=3)
-        btn_row.pack(fill="x", padx=6)
+        btn_row = tk.Frame(bottom_frame, bg=self.BG, pady=3)
+        btn_row.pack(fill="x")
         tk.Checkbutton(
             btn_row, text="自動播放 TTS", variable=self._tts_auto_var,
             bg=self.BG, fg=self.MUTED, selectcolor=self.CARD,
@@ -1127,6 +1172,23 @@ class App:
                     self._gen_btn.config(
                         text=f"▶  生成回覆建議（最近 {MAX_SENTENCES} 句 / {MAX_MINUTES} 分鐘）",
                         state="normal", bg="#059669")
+                elif t == "update_available":
+                    ver, url, notes = msg["version"], msg["url"], msg["notes"]
+                    body = (f"偵測到新版本 v{ver}，是否立即下載並更新？\n"
+                            f"程式更新後會自動重啟。（jtw 模型不受影響）")
+                    if notes:
+                        body += f"\n\n更新說明：{notes}"
+                    if messagebox.askyesno(f"新版本 v{ver} 可用", body, parent=self.root):
+                        self._apply_update(url)
+                elif t == "_do_restart":
+                    subprocess.Popen(
+                        ["cmd.exe", "/c", msg["bat"]],
+                        creationflags=(subprocess.DETACHED_PROCESS
+                                       | subprocess.CREATE_NEW_PROCESS_GROUP),
+                        close_fds=True,
+                    )
+                    self.root.destroy()
+                    sys.exit(0)
         except queue.Empty:
             pass
         self.root.after(150, self._poll)
@@ -1161,6 +1223,56 @@ class App:
         self._trans_line = 1
         self._reply_sessions.clear()
         self._last_sentence_end = 0.0
+
+    def _apply_update(self, url: str):
+        """Download SEI update zip, write bat that replaces files and restarts."""
+        import zipfile
+
+        self._status_var.set("準備下載更新…")
+        self._gen_btn.config(state="disabled")
+
+        def _worker():
+            try:
+                tmp_dir = Path(tempfile.mkdtemp(prefix="sei_update_"))
+                zip_path = tmp_dir / "sei_update.zip"
+                extract_dir = tmp_dir / "extracted"
+
+                def _progress(count, block_size, total):
+                    if total > 0:
+                        pct = min(100, count * block_size * 100 // total)
+                        _ui_queue.put({"type": "status", "text": f"下載更新中… {pct}%"})
+
+                urllib.request.urlretrieve(url, zip_path, reporthook=_progress)
+
+                _ui_queue.put({"type": "status", "text": "解壓縮中…"})
+                with zipfile.ZipFile(zip_path, "r") as z:
+                    z.extractall(extract_dir)
+
+                # If zip wraps a single folder, use that as root
+                items = list(extract_dir.iterdir())
+                src_dir = items[0] if len(items) == 1 and items[0].is_dir() else extract_dir
+
+                bat_path = APP_DIR / "_sei_update.bat"
+                exe_path = APP_DIR / "SEI_Reply_Assistant.exe"
+                bat_lines = [
+                    "@echo off",
+                    "timeout /t 3 /nobreak >nul",
+                    f'xcopy /e /y /q "{src_dir}\\*" "{APP_DIR}\\"',
+                    f'start "" "{exe_path}"',
+                    'del "%~f0"',
+                ]
+                bat_path.write_bytes(
+                    "\r\n".join(bat_lines).encode("gbk", errors="replace")
+                )
+
+                _ui_queue.put({"type": "status", "text": "安裝中，程式即將重啟…"})
+                _ui_queue.put({"type": "_do_restart", "bat": str(bat_path)})
+
+            except Exception as e:
+                _ui_queue.put({"type": "status", "text": f"更新失敗：{e}"})
+                _ui_queue.put({"type": "gen_done"})
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _clear_history(self):
         with _history_lock:
