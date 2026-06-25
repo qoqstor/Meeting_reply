@@ -1,0 +1,57 @@
+name: Release SEI Reply Assistant
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller anthropic google-genai pyperclip websockets `
+                      edge-tts python-docx openpyxl
+
+      - name: Build SEI_Reply_Assistant.exe
+        run: |
+          pyinstaller --noconfirm --onedir --noconsole `
+            --name "SEI_Reply_Assistant" `
+            --hidden-import anthropic `
+            --hidden-import "google.genai" `
+            --hidden-import "google._upb_message" `
+            --hidden-import pyperclip `
+            sei_reply_assistant.py
+
+      - name: Copy profiles into dist
+        run: |
+          if (Test-Path "profiles") {
+            Copy-Item -Recurse -Force "profiles" "dist\SEI_Reply_Assistant\profiles"
+          }
+
+      - name: Zip artifact
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zipName = "sei_reply_assistant_${tag}.zip"
+          Compress-Archive -Path "dist\SEI_Reply_Assistant\*" -DestinationPath $zipName
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Create GitHub Release and upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SEI Reply Assistant ${{ github.ref_name }}"
+          body_path: CHANGELOG.md
+          files: ${{ env.ZIP_NAME }}
