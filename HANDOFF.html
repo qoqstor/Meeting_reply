@@ -1,0 +1,1384 @@
+<title>Live Translation + Reply Assistant — Developer Handoff</title>
+<meta name="description" content="sei_reply_assistant.py v2.1.0 + jt-live-whisper v2.16.7 開發交接手冊：架構、新功能、已知問題、待辦清單。">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #1a1b2e;
+    --surface: #252640;
+    --card:    #2e2f50;
+    --border:  #3a3b5c;
+    --purple:  #7c5cfc;
+    --purple-dim: #4a3a9a;
+    --cyan:    #67e8f9;
+    --green:   #86efac;
+    --orange:  #fdba74;
+    --red:     #f87171;
+    --yellow:  #fde68a;
+    --pink:    #f5c2e7;
+    --text:    #d4d8f0;
+    --muted:   #7a7d9e;
+    --code-bg: #12132a;
+    --r: 6px;
+  }
+
+  html { font-size: 15px; scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo-mark {
+    width: 38px; height: 38px;
+    background: var(--purple);
+    border-radius: var(--r);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  .header-text { flex: 1; }
+  .header-text h1 { font-size: 1.1rem; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+  .header-text p  { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+  .badge {
+    background: var(--purple-dim);
+    color: var(--cyan);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: 3px 10px;
+    border-radius: 99px;
+    text-transform: uppercase;
+  }
+  .badge-new {
+    background: #0e2a15;
+    color: var(--green);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    padding: 3px 10px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    margin-left: 6px;
+  }
+
+  nav {
+    padding: 24px 0;
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  nav .section-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 20px 6px;
+    margin-top: 18px;
+  }
+
+  nav a {
+    display: block;
+    padding: 5px 20px;
+    font-size: .82rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  nav a:hover { color: var(--text); border-left-color: var(--purple); }
+  nav a.active { color: var(--cyan); border-left-color: var(--cyan); }
+  nav a.new-link { color: var(--green); }
+  nav a.new-link:hover { color: #a7f3d0; border-left-color: var(--green); }
+  nav a.fix-link { color: var(--orange); }
+  nav a.fix-link:hover { color: #fde68a; border-left-color: var(--orange); }
+
+  main {
+    padding: 36px 48px 80px;
+    max-width: 860px;
+    overflow-x: hidden;
+  }
+
+  section { margin-bottom: 52px; scroll-margin-top: 24px; }
+
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -.02em;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2 .icon {
+    width: 28px; height: 28px;
+    background: var(--purple-dim);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  h2 .icon.green-icon { background: #0e2a15; }
+  h2 .icon.orange-icon { background: #2a1a00; }
+
+  h3 {
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--cyan);
+    margin: 24px 0 10px;
+    letter-spacing: -.01em;
+  }
+
+  p { margin-bottom: 12px; font-size: .9rem; }
+  ul, ol { padding-left: 1.4em; margin-bottom: 12px; }
+  li { font-size: .9rem; margin-bottom: 4px; }
+
+  strong { color: #fff; }
+  em { color: var(--orange); font-style: normal; }
+
+  code {
+    background: var(--code-bg);
+    color: var(--cyan);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: Consolas, "Cascadia Code", Menlo, monospace;
+    font-size: .82em;
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--purple);
+    border-radius: var(--r);
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 12px 0 18px;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: .83rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .kw  { color: var(--purple); }
+  .cm  { color: var(--muted); font-style: italic; }
+  .st  { color: var(--green); }
+  .fn  { color: var(--cyan); }
+  .num { color: var(--orange); }
+
+  pre.green-border  { border-left-color: var(--green); }
+  pre.pink-border   { border-left-color: var(--pink); }
+  pre.orange-border { border-left-color: var(--orange); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .card-title { font-size: .8rem; font-weight: 700; color: var(--purple); margin-bottom: 6px; letter-spacing: .04em; text-transform: uppercase; }
+  .card-title.green  { color: var(--green); }
+  .card-title.pink   { color: var(--pink); }
+  .card-title.orange { color: var(--orange); }
+
+  .tbl-wrap { overflow-x: auto; margin-bottom: 18px; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th { background: var(--surface); color: var(--cyan); text-align: left; padding: 8px 14px; font-weight: 600; letter-spacing: .03em; font-size: .75rem; text-transform: uppercase; border-bottom: 2px solid var(--border); }
+  td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code { font-size: .8rem; }
+
+  .callout {
+    border-radius: var(--r);
+    padding: 12px 16px;
+    margin: 14px 0;
+    display: flex;
+    gap: 10px;
+    font-size: .87rem;
+    align-items: flex-start;
+  }
+  .callout-icon { flex-shrink: 0; font-size: 1rem; margin-top: 1px; }
+  .warn  { background: #2a1f0e; border-left: 3px solid var(--orange); }
+  .info  { background: #0e1e2a; border-left: 3px solid var(--cyan); }
+  .ok    { background: #0e2a15; border-left: 3px solid var(--green); }
+  .fail  { background: #2a0e0e; border-left: 3px solid var(--red); }
+
+  .tree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px 20px;
+    font-family: Consolas, monospace;
+    font-size: .82rem;
+    line-height: 2;
+  }
+  .tree .dir  { color: var(--cyan); font-weight: 600; }
+  .tree .file { color: var(--text); }
+  .tree .annot { color: var(--muted); }
+  .tree .new  { color: var(--green); font-weight: 600; }
+  .tree .new-annot { color: var(--green); opacity: .75; }
+
+  .pill {
+    display: inline-block;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 99px;
+    letter-spacing: .04em;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+  .pill-bug  { background: #4a0e0e; color: var(--red); }
+  .pill-todo { background: #2a1a00; color: var(--orange); }
+  .pill-done { background: #0e2a15; color: var(--green); }
+  .pill-warn { background: #1a1500; color: #fde68a; }
+  .pill-new  { background: #0e2a15; color: var(--green); }
+  .pill-fix  { background: #1a1200; color: var(--orange); }
+
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .qc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    font-size: .82rem;
+  }
+  .qc-label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .qc-val   { color: #fff; font-family: Consolas, monospace; font-size: .85rem; word-break: break-all; }
+
+  .steps { list-style: none; padding: 0; counter-reset: steps; }
+  .steps li {
+    counter-increment: steps;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    font-size: .9rem;
+  }
+  .steps li::before {
+    content: counter(steps);
+    flex-shrink: 0;
+    width: 24px; height: 24px;
+    background: var(--purple-dim);
+    color: var(--cyan);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+
+  .diff-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin: 12px 0 18px;
+    font-family: Consolas, monospace;
+    font-size: .82rem;
+  }
+  .diff-block .diff-header {
+    background: var(--surface);
+    padding: 6px 14px;
+    font-size: .72rem;
+    color: var(--muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-block .diff-line { padding: 2px 14px; line-height: 1.8; }
+  .diff-block .added   { background: #0d2818; color: var(--green); }
+  .diff-block .removed { background: #2a0e0e; color: var(--red); }
+  .diff-block .neutral { color: var(--muted); }
+
+  /* Architecture diagram */
+  .diag-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+  .diag-outer-box { border: 1px solid var(--purple); border-radius: var(--r); padding: 14px 16px; background: rgba(124,92,252,0.06); }
+  .diag-outer-label { font-size: .68rem; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; }
+  .diag-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .diag-node { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; flex-shrink: 0; }
+  .diag-node-title { color: var(--cyan); font-weight: 600; font-size: .82rem; }
+  .diag-node-sub { color: var(--muted); font-size: .72rem; margin-top: 2px; }
+  .diag-arr { color: var(--purple); font-size: 1.1rem; font-weight: 700; flex-shrink: 0; }
+  .diag-scan-label { font-size: .75rem; color: var(--muted); margin: 0 0 8px 0; padding-left: 4px; }
+  .diag-scan-label::before { content: "↓ "; color: var(--purple); }
+  .diag-log-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .diag-log-node { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: .74rem; color: var(--text); font-family: Consolas, monospace; }
+  .diag-log-or { color: var(--muted); font-size: .74rem; flex-shrink: 0; }
+  .diag-gen-box { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 10px 14px; }
+  .diag-gen-title { color: var(--cyan); font-weight: 600; font-size: .82rem; margin-bottom: 6px; }
+  .diag-provider-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .diag-provider { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: .76rem; color: var(--text); }
+  .diag-connector { display: flex; flex-direction: column; align-items: center; padding: 2px 0; }
+  .diag-conn-line { width: 2px; height: 16px; background: var(--purple-dim); }
+  .diag-conn-label { font-size: .74rem; color: var(--purple); padding: 2px 8px; background: rgba(124,92,252,0.12); border-radius: 4px; white-space: nowrap; }
+  .diag-conn-line2 { width: 2px; height: 16px; background: var(--purple-dim); }
+  .diag-jtw-box { border: 1px solid var(--cyan); border-radius: var(--r); padding: 12px 16px; background: rgba(103,232,249,0.05); }
+  .diag-jtw-title { color: var(--cyan); font-weight: 700; font-size: .85rem; margin-bottom: 4px; }
+  .diag-jtw-sub { color: var(--muted); font-size: .78rem; line-height: 1.6; }
+  .diag-jtw-sub span { color: var(--text); }
+  .diag-fallback-connector { display: flex; flex-direction: column; align-items: center; padding: 2px 0; }
+  .diag-fall-label { font-size: .74rem; color: var(--orange); padding: 2px 8px; background: rgba(253,186,116,0.1); border-radius: 4px; }
+  .diag-ps-box { border: 1px solid var(--border); border-radius: var(--r); padding: 12px 16px; background: var(--code-bg); }
+  .diag-ps-title { color: var(--orange); font-weight: 600; font-size: .82rem; margin-bottom: 4px; }
+  .diag-ps-sub { color: var(--muted); font-size: .78rem; }
+  .diag-ps-sub span { color: var(--text); }
+
+  /* UI Mockup v2 */
+  .mock-window { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #1e1f38; max-width: 640px; margin: 0 auto; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .mock-titlebar { background: #151627; padding: 9px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .mock-title-icon { font-size: 14px; }
+  .mock-title-text { font-size: .82rem; font-weight: 700; color: #fff; flex: 1; }
+  .mock-sel { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font-size: .72rem; color: var(--cyan); display: inline-flex; align-items: center; gap: 3px; }
+  .mock-sel-arrow { color: var(--muted); font-size: .65rem; }
+  .mock-btn-icon { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 3px 7px; font-size: .72rem; color: var(--muted); }
+  .mock-section-hdr { font-size: .65rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; padding: 8px 14px 4px; border-top: 1px solid var(--border); }
+  .mock-pane-label { font-size: .6rem; color: var(--purple); font-family: Consolas, monospace; padding: 3px 10px; background: rgba(124,92,252,.08); border-bottom: 1px solid var(--border); letter-spacing: .06em; display: flex; align-items: center; gap: 6px; }
+  .mock-pane-sash { height: 5px; background: #1a1b2e; border-top: 1px solid var(--purple); border-bottom: 1px solid var(--purple); cursor: row-resize; display: flex; align-items: center; justify-content: center; }
+  .mock-pane-sash::after { content: "⠿"; color: var(--purple); font-size: .7rem; opacity: .6; }
+  .mock-transcript-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 10px 10px; height: 120px; }
+  .mock-tc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; overflow: hidden; }
+  .mock-tc-label { font-size: .65rem; color: var(--purple); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .mock-line { margin-bottom: 7px; }
+  .mock-ts { font-size: .68rem; color: var(--muted); font-family: Consolas, monospace; }
+  .mock-txt { font-size: .76rem; line-height: 1.4; }
+  .mock-txt.ja { color: var(--text); }
+  .mock-txt.zh { color: var(--cyan); }
+  .mock-gen-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; }
+  .mock-gen-btn { background: #1a4a1a; border: 1px solid var(--green); border-radius: 4px; padding: 5px 12px; font-size: .78rem; color: var(--green); font-weight: 700; flex: 1; }
+  .mock-auto-box { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: .72rem; color: var(--green); white-space: nowrap; }
+  .mock-reply-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 10px 6px; }
+  .mock-reply-panel { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .mock-reply-hdr { display: flex; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--border); gap: 4px; }
+  .mock-reply-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; flex: 1; }
+  .mock-reply-label.ja { color: var(--cyan); }
+  .mock-reply-label.zh { color: var(--pink); }
+  .mock-reply-btn { font-size: .65rem; padding: 2px 6px; border-radius: 3px; border: 1px solid; cursor: default; }
+  .mock-reply-btn.ja { color: var(--cyan); border-color: #1e3a5f; background: #0e1e2a; }
+  .mock-reply-btn.zh { color: var(--pink); border-color: #3b1a3e; background: #1a0e1e; }
+  .mock-reply-text { padding: 6px 8px; font-size: .75rem; line-height: 1.5; min-height: 70px; }
+  .mock-reply-text.ja { color: var(--cyan); }
+  .mock-reply-text.zh { color: var(--pink); }
+  .mock-bottom-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px 8px; flex-wrap: wrap; }
+  .mock-check { font-size: .72rem; color: var(--muted); display: flex; align-items: center; gap: 3px; }
+  .mock-check-box { width: 12px; height: 12px; border: 1px solid var(--border); border-radius: 2px; display: inline-block; }
+  .mock-export-btn { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: .72rem; color: var(--green); margin-left: auto; }
+  .mock-clear-btn { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: .72rem; color: var(--muted); }
+  .mock-jtw-bar { border-top: 2px solid var(--border); padding: 9px 14px; display: flex; align-items: center; gap: 8px; background: #151627; flex-wrap: wrap; }
+  .mock-jtw-open { background: #1a4a1a; border: 1px solid var(--green); border-radius: 4px; padding: 4px 12px; font-size: .76rem; color: var(--green); font-weight: 600; }
+  .mock-jtw-stop { background: #4a0e0e; border: 1px solid var(--red); border-radius: 4px; padding: 4px 12px; font-size: .76rem; color: var(--red); }
+  .mock-status { font-size: .74rem; color: var(--green); margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .mock-dot { width: 7px; height: 7px; background: var(--green); border-radius: 50%; display: inline-block; }
+  .mock-hist { font-size: .72rem; color: var(--muted); }
+
+  /* annotations */
+  .mock-annotations { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .mock-ann { display: flex; align-items: flex-start; gap: 10px; font-size: .8rem; }
+  .mock-ann-num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--purple-dim); color: var(--cyan); font-size: .7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .mock-ann-text { color: var(--text); line-height: 1.5; }
+  .mock-ann-text em { color: var(--cyan); }
+
+  /* v2 feature cards */
+  .v2-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .v2-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+  .v2-card-icon { font-size: 1.3rem; margin-bottom: 8px; }
+  .v2-card-title { font-size: .85rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .v2-card-desc { font-size: .8rem; color: var(--muted); line-height: 1.5; }
+  .v2-card-tag { display: inline-block; font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 99px; margin-top: 8px; }
+  .v2-tag-opt  { background: #1a2a1a; color: var(--green); }
+  .v2-tag-auto { background: #2a1a2a; color: var(--pink); }
+  .v2-tag-core { background: #1a1a2a; color: var(--cyan); }
+  .v2-tag-fix  { background: #2a1a00; color: var(--orange); }
+
+  /* changelog entry */
+  .chg-entry { border-left: 3px solid var(--orange); background: rgba(253,186,116,.05); border-radius: 0 var(--r) var(--r) 0; padding: 12px 16px; margin-bottom: 10px; }
+  .chg-type { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+  .chg-type.fix  { color: var(--orange); }
+  .chg-type.feat { color: var(--green); }
+  .chg-type.tune { color: var(--cyan); }
+  .chg-title { font-size: .9rem; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .chg-body { font-size: .82rem; color: var(--muted); line-height: 1.6; }
+  .chg-body code { font-size: .78rem; }
+
+  /* How to update banner */
+  .update-banner {
+    background: rgba(124,92,252,0.08);
+    border: 1px solid var(--purple);
+    border-radius: var(--r);
+    padding: 14px 18px;
+    margin-bottom: 0;
+    font-size: .82rem;
+    line-height: 1.7;
+  }
+  .update-banner strong { color: var(--cyan); }
+  .update-banner code { font-size: .78rem; }
+
+  @media (max-width: 700px) {
+    .shell { grid-template-columns: 1fr; }
+    nav { display: none; }
+    main { padding: 20px 18px 60px; }
+  }
+</style>
+
+<div class="shell">
+
+<header>
+  <div class="logo-mark">🎙</div>
+  <div class="header-text">
+    <h1>Live Translation + Reply Assistant</h1>
+    <p>Developer Handoff Manual — jt-live-whisper 整合工具</p>
+  </div>
+  <span class="badge">Session Handoff</span>
+  <span class="badge-new">SEI v2.1.0</span>
+  <span class="badge-new">JTW v2.16.7</span>
+</header>
+
+<nav>
+  <div class="section-label">Overview</div>
+  <a href="#how-to-update">如何更新此文件</a>
+  <a href="#what">功能概覽</a>
+  <a href="#quickstart">快速啟動</a>
+  <a href="#files">檔案結構</a>
+
+  <div class="section-label">Architecture</div>
+  <a href="#arch">系統架構</a>
+  <a href="#ui-mockup">UI 介面圖例</a>
+  <a href="#logmonitor">Log Monitor</a>
+  <a href="#providers">AI Providers</a>
+  <a href="#profiles">Profile 系統</a>
+
+  <div class="section-label">v2 新功能</div>
+  <a href="#v2" class="new-link">5 項新功能總覽</a>
+  <a href="#v2-trigger" class="new-link">自動觸發</a>
+  <a href="#v2-bidi" class="new-link">雙向回覆</a>
+  <a href="#v2-history" class="new-link">對話歷史</a>
+  <a href="#v2-tts" class="new-link">TTS 播放</a>
+  <a href="#v2-export" class="new-link">匯出逐字稿</a>
+
+  <div class="section-label">v2.1 修正</div>
+  <a href="#v21" class="fix-link">v2.1.0 異動記錄</a>
+  <a href="#v2167" class="fix-link">v2.16.7 JTW medium 模型</a>
+
+  <div class="section-label">發布</div>
+  <a href="#bundle">打包 &amp; 發布</a>
+  <a href="#bundle-dist">發布給使用者</a>
+
+  <div class="section-label">Reference</div>
+  <a href="#ui">UI 元件對照</a>
+  <a href="#bugs">已知問題</a>
+  <a href="#todo">待辦 / 延伸</a>
+</nav>
+
+<main>
+
+<!-- ── HOW TO UPDATE ── -->
+<section id="how-to-update">
+  <h2><span class="icon">🔄</span>如何更新此文件</h2>
+  <div class="update-banner">
+    <p>此文件托管為 Claude Artifact，任何 Claude 實例均可繼續開發與更新。</p>
+    <p><strong>更新步驟：</strong></p>
+    <ol style="margin-top:8px;padding-left:1.4em">
+      <li>取得此文件目前內容：使用 <code>WebFetch</code> 工具讀取此 URL</li>
+      <li>修改 HTML 內容（加入新版本記錄、修正說明等）</li>
+      <li>將修改後內容寫入 <code>.html</code> 檔案</li>
+      <li>呼叫 <code>Artifact</code> 工具，傳入 <strong><code>url: "https://claude.ai/code/artifact/83677da4-cd00-4831-9cd5-d6cbf2f7cdab"</code></strong> 即可更新至相同 URL</li>
+    </ol>
+    <p style="margin-top:10px"><strong>提示給下一位 Claude：</strong> favicon 保持 <code>🎙</code>，file_path 用任意 <code>.html</code> 路徑（e.g. scratchpad），<code>label</code> 填版本號（e.g. <code>v2.2.0</code>）。</p>
+  </div>
+</section>
+
+<!-- ── WHAT ── -->
+<section id="what">
+  <h2><span class="icon">📋</span>功能概覽</h2>
+  <p>
+    <strong>sei_reply_assistant.py</strong> 是一個獨立的 Python tkinter GUI 工具，掛載在
+    <code>jt-live-whisper</code> 旁邊執行，提供：
+  </p>
+  <ul>
+    <li><strong>即時翻譯顯示</strong> — 監控 jt-live-whisper log，左右並列顯示日文原文 / 中文翻譯（自動捲動）</li>
+    <li><strong>AI 回覆建議（日文）</strong> — 取最近 <strong>30 句 / 10 分鐘</strong>對話，送進 AI 生成日文回覆</li>
+    <li><strong>中文草稿（雙向回覆）</strong> — AI 同步輸出中文草稿，方便中文使用者理解並回應 <span class="pill pill-new">v2</span></li>
+    <li><strong>自動觸發模式</strong> — 偵測句尾標點（。！？）靜默 8 秒後自動生成 <span class="pill pill-new">v2</span></li>
+    <li><strong>對話歷史記憶</strong> — 多輪對話送進 AI，保留最多 10 輪歷史 <span class="pill pill-new">v2</span></li>
+    <li><strong>TTS 播放</strong> — 生成後可朗讀日文回覆或中文草稿（edge-tts）<span class="pill pill-new">v2</span></li>
+    <li><strong>匯出逐字稿</strong> — 一鍵匯出 Excel / Word / TXT，含原文、翻譯、AI 回覆 <span class="pill pill-new">v2</span></li>
+    <li><strong>可調整視窗比例</strong> — 上下兩區 PanedWindow，拖曳 sash 自由調整比例 <span class="pill pill-fix">v2.1</span></li>
+    <li><strong>多 AI Provider</strong> — Ollama（本地免費）、Anthropic Claude、Google Gemini</li>
+    <li><strong>可設定情境 Profile</strong> — <code>profiles/*.json</code> 儲存每個專案的 system prompt</li>
+    <li><strong>jt-live-whisper 啟動鍵</strong> — 直接從 UI 開啟 / 停止翻譯程式，含模式選單</li>
+  </ul>
+
+  <div class="callout ok">
+    <span class="callout-icon">✅</span>
+    <span>工具不依賴 jt-live-whisper 的 <code>--webui</code> 模式；直接讀取 log 檔，CLI 模式也可用。</span>
+  </div>
+
+  <div class="quick-grid" style="margin-top:18px">
+    <div class="qc"><div class="qc-label">主程式</div><div class="qc-val">sei_reply_assistant.py</div></div>
+    <div class="qc"><div class="qc-label">Profiles 目錄</div><div class="qc-val">profiles/</div></div>
+    <div class="qc"><div class="qc-label">Log 監控目錄</div><div class="qc-val">jtw/logs/ 或 _internal/logs/</div></div>
+    <div class="qc"><div class="qc-label">Ollama 端點</div><div class="qc-val">http://localhost:11434</div></div>
+    <div class="qc"><div class="qc-label">歷史記憶上限</div><div class="qc-val">10 輪 (20 msg)</div></div>
+    <div class="qc"><div class="qc-label">TTS 語音（日）</div><div class="qc-val">NanamiNeural</div></div>
+  </div>
+</section>
+
+<!-- ── QUICKSTART ── -->
+<section id="quickstart">
+  <h2><span class="icon">▶</span>快速啟動</h2>
+
+  <h3>安裝依賴</h3>
+  <pre><code><span class="cm"># 核心依賴</span>
+pip install anthropic google-genai pyperclip websockets
+
+<span class="cm"># v2 新增（選用，不安裝仍可使用核心功能）</span>
+pip install edge-tts python-docx openpyxl</code></pre>
+
+  <h3>啟動</h3>
+  <pre><code>python sei_reply_assistant.py</code></pre>
+
+  <h3>使用流程（v2）</h3>
+  <ol>
+    <li>UI 啟動後選擇情境 Profile → 設定 Provider / Model → 按「連線」</li>
+    <li>點擊 <strong>🎙 開啟即時翻譯</strong> 啟動 jt-live-whisper</li>
+    <li>對方說話 → 即時翻譯區自動更新（左=日文，右=中文）</li>
+    <li>點擊綠色 <strong>▶ 生成回覆建議</strong>（或啟用「自動觸發」checkbox）</li>
+    <li>AI 輸出 <strong>日文回覆</strong>（左窗，可直接複製給對方）+ <strong>中文草稿</strong>（右窗，理解用）</li>
+    <li>點「▶ TTS」朗讀，或「複製」貼至對話視窗</li>
+    <li>點「匯出逐字稿」存成 Excel / Word</li>
+  </ol>
+
+  <h3>API Key 設定</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Provider</th><th>Key 格式</th><th>免費</th><th>速度</th></tr>
+      <tr><td>Ollama</td><td>不需要</td><td>✅ 完全免費</td><td>慢（CPU）</td></tr>
+      <tr><td>Anthropic</td><td><code>sk-ant-api03-...</code></td><td>❌ 付費</td><td>快 2-3s</td></tr>
+      <tr><td>Gemini</td><td><code>AIza...</code></td><td>⚠ 依帳號</td><td>快</td></tr>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠</span>
+    <span>Gemini 測試 key 的所有 model <code>free_tier_requests limit = 0</code>，無法使用。建議改用 Anthropic 或 Ollama。</span>
+  </div>
+</section>
+
+<!-- ── FILES ── -->
+<section id="files">
+  <h2><span class="icon">📁</span>檔案結構</h2>
+
+  <h3>GitHub 倉庫（公開發布）</h3>
+  <div class="tree">
+    <div><span class="dir">Meeting_reply/</span> <span class="annot">← github.com/qoqstor/Meeting_reply</span></div>
+    <div>&nbsp;&nbsp;<span class="file">sei_reply_assistant.py</span> <span class="annot">← 主程式（v2.1.0，含全部新功能）</span></div>
+    <div>&nbsp;&nbsp;<span class="file">requirements.txt</span> <span class="annot">← 含 edge-tts / python-docx / openpyxl</span></div>
+    <div>&nbsp;&nbsp;<span class="file">README.md</span> <span class="annot">← 完整文件（含 v2 功能說明）</span></div>
+    <div>&nbsp;&nbsp;<span class="dir">profiles\</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">General_JA.json</span> <span class="annot">← 通用日文情境（範例）</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">General_EN.json</span> <span class="annot">← 通用英文情境（範例）</span></div>
+  </div>
+
+  <h3>開發目錄（C:\jt-live-whisper\）</h3>
+  <div class="tree">
+    <div><span class="dir">C:\jt-live-whisper\</span></div>
+    <div>&nbsp;&nbsp;<span class="file">sei_reply_assistant.py</span> <span class="annot">← 本工具主程式（與 GitHub 同步）</span></div>
+    <div>&nbsp;&nbsp;<span class="file">build_bundle.ps1</span> <span class="annot">← 一鍵打包腳本</span></div>
+    <div>&nbsp;&nbsp;<span class="dir">profiles\</span> <span class="annot">← 包含專案私有情境（不上傳 GitHub）</span></div>
+    <div>&nbsp;&nbsp;<span class="dir">logs\</span> <span class="annot">← jt-live-whisper 逐字稿輸出（開發模式）</span></div>
+    <div>&nbsp;&nbsp;<span class="file">translate_meeting.py</span> <span class="annot">← jt-live-whisper 核心（不要改）</span></div>
+    <div>&nbsp;&nbsp;<span class="file">start.ps1</span> <span class="annot">← jt-live-whisper venv 啟動腳本</span></div>
+    <div>&nbsp;&nbsp;<span class="dir">dist\</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">jt-live-whisper-offline\</span> <span class="annot">← 打包所需 JTW 離線 build</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="new">SEI_Bundle\</span> <span class="new-annot">← build_bundle.ps1 輸出</span></div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ</span>
+    <span>專案私有的 Profile（含客戶名稱 / 專案情境）應存在開發目錄的 <code>profiles/</code>，<strong>不應推送至公開 GitHub</strong>。GitHub 只保留通用範例。</span>
+  </div>
+</section>
+
+<!-- ── ARCH ── -->
+<section id="arch">
+  <h2><span class="icon">⚙</span>系統架構</h2>
+  <div class="diag-wrap">
+    <div class="diag-outer-box">
+      <div class="diag-outer-label">SEI_Reply_Assistant.exe — tkinter GUI (main process)</div>
+      <div class="diag-row">
+        <div class="diag-node">
+          <div class="diag-node-title">log_monitor()</div>
+          <div class="diag-node-sub">daemon thread<br>0.4s poll</div>
+        </div>
+        <div class="diag-arr">→</div>
+        <div class="diag-node">
+          <div class="diag-node-title">_ui_queue</div>
+          <div class="diag-node-sub">queue.Queue<br>push events</div>
+        </div>
+        <div class="diag-arr">→</div>
+        <div class="diag-node">
+          <div class="diag-node-title">_poll()</div>
+          <div class="diag-node-sub">main thread<br>every 150ms</div>
+        </div>
+        <div class="diag-arr">→</div>
+        <div class="diag-node">
+          <div class="diag-node-title">_check_auto_trigger()</div>
+          <div class="diag-node-sub">every 500ms<br>sentence-end</div>
+        </div>
+      </div>
+      <p class="diag-scan-label">掃描多個 log 目錄（取最新 <code>*逐字稿_*.txt</code>，涵蓋所有翻譯模式）</p>
+      <div class="diag-log-row">
+        <div class="diag-log-node">jtw\logs\*逐字稿_*.txt</div>
+        <span class="diag-log-or">or</span>
+        <div class="diag-log-node">jtw\_internal\logs\*逐字稿_*.txt</div>
+        <span class="diag-log-or">or</span>
+        <div class="diag-log-node">logs\*逐字稿_*.txt (dev)</div>
+      </div>
+      <div class="diag-gen-box">
+        <div class="diag-gen-title">_generate() → threading.Thread → call_ai() → _parse_bilingual() → (ja_reply, zh_reply)</div>
+        <div class="diag-provider-row">
+          <div class="diag-provider">🟢 Ollama stream + history</div>
+          <div class="diag-provider">◆ Anthropic messages history</div>
+          <div class="diag-provider">✦ Gemini text concat history</div>
+        </div>
+      </div>
+    </div>
+    <div class="diag-connector">
+      <div class="diag-conn-line"></div>
+      <div class="diag-conn-label">subprocess.Popen — bundled exe mode</div>
+      <div class="diag-conn-line2"></div>
+    </div>
+    <div class="diag-jtw-box">
+      <div class="diag-jtw-title">jtw\jt-live-whisper.exe  --_tm_mode  --mode ja_zh</div>
+      <div class="diag-jtw-sub">
+        frozen PyInstaller exe, no Python install needed<br>
+        <span>Whisper-small ASR</span> → <span>NLLB-600M translate</span><br>
+        log 寫入: <span>jtw\_internal\logs\</span>（frozen exe 路徑）
+      </div>
+    </div>
+    <div class="diag-fallback-connector">
+      <div class="diag-conn-line"></div>
+      <div class="diag-fall-label">▲ fallback（dev mode，bundled exe 不存在時）</div>
+      <div class="diag-conn-line2"></div>
+    </div>
+    <div class="diag-ps-box">
+      <div class="diag-ps-title">powershell start.ps1 --mode ja_zh</div>
+      <div class="diag-ps-sub">venv + script mode（開發機專用）<br>log 寫入: <span>C:\jt-live-whisper\logs\</span></div>
+    </div>
+  </div>
+
+  <h3>共享狀態（v2 新增）</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>變數</th><th>型別</th><th>說明</th></tr>
+      <tr><td><code>_recent_lines</code></td><td><code>list[tuple]</code></td><td>最近 100 筆 (ts, ja, zh)，由 log_monitor 寫入</td></tr>
+      <tr><td><code>_conversation_history</code></td><td><code>list[dict]</code></td><td>多輪對話歷史，最多 20 則（10 輪），v2 新增</td></tr>
+      <tr><td><code>_ui_queue</code></td><td><code>queue.Queue</code></td><td>跨 thread 事件傳遞，main thread 每 150ms drain</td></tr>
+      <tr><td><code>_tts_lock</code></td><td><code>threading.Lock</code></td><td>防止同時播放兩段 TTS，v2 新增</td></tr>
+      <tr><td><code>_history_lock</code></td><td><code>threading.Lock</code></td><td>保護 _conversation_history 並發寫，v2 新增</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── UI MOCKUP v2 ── -->
+<section id="ui-mockup">
+  <h2><span class="icon">🖼</span>UI 介面圖例（v2.1）</h2>
+  <p>v2.1 版本：上下兩區改用 <code>ttk.PanedWindow</code>，拖曳中間 sash 可自由調整比例（預設 3:2）。</p>
+
+  <div class="mock-window">
+    <div class="mock-titlebar">
+      <span class="mock-title-icon">🎙</span>
+      <span class="mock-title-text">即時翻譯 + 回覆助理 v2</span>
+      <span class="mock-btn-icon">📁</span>
+      <span class="mock-sel">Ollama <span class="mock-sel-arrow">▾</span></span>
+      <span class="mock-sel">qwen2.5:7b <span class="mock-sel-arrow">▾</span></span>
+      <span class="mock-hist">歷史：3 輪</span>
+    </div>
+
+    <div class="mock-pane-label">① 即時翻譯 — pane top (weight=3)</div>
+    <div class="mock-transcript-grid">
+      <div class="mock-tc">
+        <div class="mock-tc-label">日文原文</div>
+        <div class="mock-line">
+          <div class="mock-ts">[14:37]</div>
+          <div class="mock-txt ja">助かりました。この件を確認させてください。</div>
+        </div>
+        <div class="mock-line">
+          <div class="mock-ts">[14:38]</div>
+          <div class="mock-txt ja">一般的にはどうでしょうか。</div>
+        </div>
+      </div>
+      <div class="mock-tc">
+        <div class="mock-tc-label">中文翻譯</div>
+        <div class="mock-line">
+          <div class="mock-ts">[14:37]</div>
+          <div class="mock-txt zh">這很有幫助，請讓我確認一下這件事。</div>
+        </div>
+        <div class="mock-line">
+          <div class="mock-ts">[14:38]</div>
+          <div class="mock-txt zh">一般來說應該怎麼看呢。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mock-pane-sash" title="拖曳調整比例"></div>
+
+    <div class="mock-pane-label">② 生成區 + 建議回覆 — pane bottom (weight=2)</div>
+
+    <div class="mock-gen-row">
+      <div class="mock-gen-btn">▶ 生成回覆建議（最近 30 句 / 10 分鐘）</div>
+      <div class="mock-auto-box">③ ☑ 自動觸發</div>
+    </div>
+
+    <div class="mock-section-hdr">④ 建議回覆</div>
+    <div class="mock-reply-grid">
+      <div class="mock-reply-panel">
+        <div class="mock-reply-hdr">
+          <span class="mock-reply-label ja">🤖 AI 日文回覆</span>
+          <span class="mock-reply-btn ja">▶ TTS</span>
+          <span class="mock-reply-btn ja">複製</span>
+        </div>
+        <div class="mock-reply-text ja">はい、確認いたしました。一般的には、まずシステム側で設定を変更してからご報告するという流れになっております。</div>
+      </div>
+      <div class="mock-reply-panel">
+        <div class="mock-reply-hdr">
+          <span class="mock-reply-label zh">📝 中文草稿</span>
+          <span class="mock-reply-btn zh">▶ TTS</span>
+          <span class="mock-reply-btn zh">複製</span>
+        </div>
+        <div class="mock-reply-text zh">好的，我已確認。一般來說，我們會先更改系統設定再向您彙報。</div>
+      </div>
+    </div>
+
+    <div class="mock-bottom-row">
+      <div class="mock-check"><div class="mock-check-box"></div> 自動播放 TTS</div>
+      <span style="font-size:.7rem;color:var(--muted)">語言：</span>
+      <span class="mock-sel" style="font-size:.7rem">ja <span class="mock-sel-arrow">▾</span></span>
+      <div class="mock-export-btn">匯出逐字稿</div>
+      <div class="mock-clear-btn">清除記錄</div>
+    </div>
+
+    <div class="mock-jtw-bar">
+      <span style="font-size:.8rem;color:#fff;font-weight:600;">🎙</span>
+      <span class="mock-sel">ja2zh 日翻中 <span class="mock-sel-arrow">▾</span></span>
+      <span class="mock-jtw-open">開啟</span>
+      <span class="mock-jtw-stop">停止</span>
+      <span class="mock-status"><span class="mock-dot"></span> 執行中</span>
+    </div>
+  </div>
+
+  <div class="mock-annotations" style="margin-top:18px">
+    <div class="mock-ann">
+      <div class="mock-ann-num">①</div>
+      <div class="mock-ann-text"><em>即時翻譯區（PanedWindow 上半）</em>：log_monitor 讀取所有模式的逐字稿（<code>*逐字稿_*.txt</code>），推送 <code>transcript_add</code>。<code>has_sentence_end</code> flag 觸發自動觸發計時。</div>
+    </div>
+    <div class="mock-ann">
+      <div class="mock-ann-num">②</div>
+      <div class="mock-ann-text"><em>sash（可拖曳分隔線）</em>：<code>ttk.PanedWindow(orient="vertical")</code>，拖曳可改變上下比例。預設 weight=3（上）: weight=2（下）。</div>
+    </div>
+    <div class="mock-ann">
+      <div class="mock-ann-num">③</div>
+      <div class="mock-ann-text"><em>自動觸發 checkbox</em>：勾選後，<code>_check_auto_trigger()</code> 偵測 <code>_last_sentence_end</code>，超過 <strong>8 秒</strong>靜默才觸發，給 Ollama 足夠時間產生回覆。</div>
+    </div>
+    <div class="mock-ann">
+      <div class="mock-ann-num">④</div>
+      <div class="mock-ann-text"><em>建議回覆區（PanedWindow 下半）</em>：隨 pane 伸縮，移除固定 <code>height=4</code>，<code>fill="both", expand=True</code>。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── LOG MONITOR ── -->
+<section id="logmonitor">
+  <h2><span class="icon">👁</span>Log Monitor 機制</h2>
+
+  <h3>監控的 log 格式</h3>
+  <p>jt-live-whisper 依翻譯模式寫出不同格式：</p>
+  <pre><code><span class="cm"># ja_zh（日中雙向）— 含方向符號 ▶ / ◀</span>
+[14:37:42] ◀ [日] 助かりました。じゃあ、ちょっとこの
+[14:37:42] ◀ [中] 這就是我們所需要的.
+
+<span class="cm"># ja2zh（日翻中）— 無方向符號</span>
+[09:43:43] [日] 生機順利完成吊掛22日晚間
+[09:43:43] [中] 沒有人知道.</code></pre>
+
+  <p>正則表達式（<code>▶◀</code> 為 optional，v2.1 修正）：</p>
+  <pre class="orange-border"><code><span class="fn">LINE_RE</span> = re.<span class="fn">compile</span>(<span class="st">r'^\[(\d{2}:\d{2}:\d{2})\]\s*(?:[▶◀]\s*)?\[([日中])\]\s*(.+)$'</span>)
+<span class="fn">SENTENCE_END_RE</span> = re.<span class="fn">compile</span>(<span class="st">r'[。！？!?]'</span>)  <span class="cm"># v2: 用於自動觸發</span></code></pre>
+
+  <h3>Log 檔名模式（v2.1 修正）</h3>
+  <p>translate_meeting.py 依 mode 寫出不同前綴：</p>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Mode</th><th>檔名前綴</th></tr>
+      <tr><td><code>ja_zh</code></td><td><code>日中雙向_逐字稿_*.txt</code></td></tr>
+      <tr><td><code>ja2zh</code></td><td><code>日翻中_逐字稿_*.txt</code></td></tr>
+      <tr><td><code>zh2ja</code></td><td><code>中翻日_逐字稿_*.txt</code></td></tr>
+      <tr><td><code>en_zh</code></td><td><code>英中雙向_逐字稿_*.txt</code></td></tr>
+      <tr><td><code>en2zh</code></td><td><code>英翻中_逐字稿_*.txt</code></td></tr>
+      <tr><td><code>ko2zh</code></td><td><code>韓翻中_逐字稿_*.txt</code></td></tr>
+    </table>
+  </div>
+
+  <p><code>_find_latest_log()</code> 使用 <code>*逐字稿_*.txt</code> 涵蓋所有模式，取 mtime 最新檔：</p>
+  <pre><code><span class="kw">def</span> <span class="fn">_find_latest_log</span>() -> str | <span class="kw">None</span>:
+    files = []
+    <span class="kw">for</span> d <span class="kw">in</span> <span class="fn">_jtw_log_dirs</span>():
+        files.extend(glob.glob(os.path.join(d, <span class="st">"*逐字稿_*.txt"</span>)))  <span class="cm"># v2.1: was "日中雙向_逐字稿_*.txt"</span>
+    <span class="kw">return</span> max(files, key=os.path.getmtime) <span class="kw">if</span> files <span class="kw">else None</span></code></pre>
+
+  <h3>多目錄掃描</h3>
+  <pre><code><span class="kw">def</span> <span class="fn">_jtw_log_dirs</span>() -> list[str]:
+    dirs = [LOGS_DIR]
+    <span class="kw">if</span> JTW_EXE.exists():
+        jtw_dir = JTW_EXE.parent
+        dirs.append(str(jtw_dir / <span class="st">"logs"</span>))
+        dirs.append(str(jtw_dir / <span class="st">"_internal"</span> / <span class="st">"logs"</span>))
+    <span class="kw">return</span> list(dict.fromkeys(dirs))</code></pre>
+</section>
+
+<!-- ── PROVIDERS ── -->
+<section id="providers">
+  <h2><span class="icon">🤖</span>AI Providers</h2>
+
+  <div class="card">
+    <div class="card-title">Ollama（預設）</div>
+    <p>使用 <code>/api/chat</code> streaming endpoint。每 300ms 更新 UI（節流）。<code>num_predict=500</code>（v2 調高，需容納 JSON 格式輸出）。history 作為 messages array 傳入。</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Anthropic Claude</div>
+    <p>使用 <code>anthropic</code> SDK。非 streaming，max_tokens=600（v2 調高）。history 作為 messages array 傳入（system 分離）。</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Google Gemini</div>
+    <p>使用 <code>google-genai</code> SDK。history 以文字串接（<code>User: ... \nAssistant: ...\n</code>）傳入，Gemini 無 messages API 格式限制。</p>
+  </div>
+</section>
+
+<!-- ── PROFILES ── -->
+<section id="profiles">
+  <h2><span class="icon">📂</span>Profile 系統</h2>
+  <p>每個 profile 是一個 JSON 檔案，儲存在 <code>profiles/</code>。</p>
+
+  <div class="callout info">
+    <span class="callout-icon">💡</span>
+    <span><strong>v2 重要：</strong> system_prompt 需包含 JSON 格式指示（含 <code>ja_reply</code> / <code>zh_reply</code> key），才能生成雙向回覆。若 AI 未返回 JSON，<code>_parse_bilingual()</code> 會 fallback 至全文 as ja_reply、空字串 as zh_reply。</span>
+  </div>
+
+  <pre><code><span class="cm">// profiles/General_JA.json</span>
+{
+  <span class="st">"name"</span>: <span class="st">"General_JA"</span>,
+  <span class="st">"description"</span>: <span class="st">"通用日文會議回覆"</span>,
+  <span class="st">"reply_lang"</span>: <span class="st">"ja"</span>,
+  <span class="st">"system_prompt"</span>: <span class="st">"あなたは日本語会議の回答アシスタントです。\n相手の発言に対して、丁寧な敬語で3〜4文の返答を提案してください。\n以下のJSON形式のみで出力してください：\n{\"ja_reply\": \"...\", \"zh_reply\": \"...\"}"</span>
+}</code></pre>
+
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>欄位</th><th>說明</th></tr>
+      <tr><td><code>name</code></td><td>UI 下拉選單顯示名稱</td></tr>
+      <tr><td><code>description</code></td><td>顯示在選單旁的灰色說明文字</td></tr>
+      <tr><td><code>reply_lang</code></td><td>預留，未來自動切換 TTS 語言用</td></tr>
+      <tr><td><code>system_prompt</code></td><td>送給 AI 的情境說明，<strong>需含 JSON 格式指示</strong></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── v2 FEATURES ── -->
+<section id="v2">
+  <h2><span class="icon green-icon">✨</span>v2 新功能總覽</h2>
+  <div class="v2-grid">
+    <div class="v2-card">
+      <div class="v2-card-icon">⚡</div>
+      <div class="v2-card-title">自動觸發</div>
+      <div class="v2-card-desc">句尾標點偵測 + 8 秒靜默計時，自動生成回覆，給 Ollama 足夠時間完成。</div>
+      <span class="v2-card-tag v2-tag-auto">可開關</span>
+    </div>
+    <div class="v2-card">
+      <div class="v2-card-icon">↔️</div>
+      <div class="v2-card-title">雙向回覆</div>
+      <div class="v2-card-desc">AI 同步輸出日文回覆 + 中文草稿，JSON 格式解析，fallback 安全。</div>
+      <span class="v2-card-tag v2-tag-core">核心</span>
+    </div>
+    <div class="v2-card">
+      <div class="v2-card-icon">🧠</div>
+      <div class="v2-card-title">對話歷史記憶</div>
+      <div class="v2-card-desc">最多 10 輪歷史送入 AI，三種 Provider 均支援，可一鍵清除。</div>
+      <span class="v2-card-tag v2-tag-core">核心</span>
+    </div>
+    <div class="v2-card">
+      <div class="v2-card-icon">🔊</div>
+      <div class="v2-card-title">TTS 播放</div>
+      <div class="v2-card-desc">edge-tts 離線語音合成，日文 NanamiNeural，中文 HsiaoChenNeural。</div>
+      <span class="v2-card-tag v2-tag-opt">需 edge-tts</span>
+    </div>
+    <div class="v2-card">
+      <div class="v2-card-icon">📊</div>
+      <div class="v2-card-title">匯出逐字稿</div>
+      <div class="v2-card-desc">一鍵匯出含 AI 回覆的完整記錄，支援 Excel / Word / TXT。</div>
+      <span class="v2-card-tag v2-tag-opt">需 openpyxl / docx</span>
+    </div>
+    <div class="v2-card">
+      <div class="v2-card-icon">↕️</div>
+      <div class="v2-card-title">可調整版面</div>
+      <div class="v2-card-desc">PanedWindow 上下分割，拖曳 sash 調整翻譯區與回覆區比例。</div>
+      <span class="v2-card-tag v2-tag-fix">v2.1 新增</span>
+    </div>
+  </div>
+</section>
+
+<section id="v2-trigger">
+  <h2><span class="icon green-icon">⚡</span>自動觸發模式</h2>
+
+  <h3>工作原理</h3>
+  <pre class="green-border"><code><span class="cm"># log_monitor：偵測句尾，設 flag</span>
+_ui_queue.put({
+    <span class="st">"type"</span>: <span class="st">"transcript_add"</span>,
+    <span class="st">"ts"</span>: ts, <span class="st">"ja"</span>: text, <span class="st">"zh"</span>: zh,
+    <span class="st">"has_sentence_end"</span>: bool(SENTENCE_END_RE.search(text))  <span class="cm">← 新增</span>
+})
+
+<span class="cm"># _poll()：收到 flag 後記錄時間</span>
+<span class="kw">if</span> msg.get(<span class="st">"has_sentence_end"</span>) <span class="kw">and</span> self._auto_reply_var.get():
+    self._last_sentence_end = time.monotonic()
+
+<span class="cm"># _check_auto_trigger()：每 500ms 輪詢</span>
+<span class="kw">if</span> (self._auto_reply_var.get()
+        <span class="kw">and</span> self._last_sentence_end > <span class="num">0</span>
+        <span class="kw">and</span> <span class="kw">not</span> self._generating
+        <span class="kw">and</span> time.monotonic() - self._last_sentence_end >= AUTO_TRIGGER_DEBOUNCE):
+    self._last_sentence_end = <span class="num">0.0</span>  <span class="cm">← 重置，避免重複觸發</span>
+    self._generate()</code></pre>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ</span>
+    <span><code>AUTO_TRIGGER_DEBOUNCE = 8.0</code> 秒（v2.1 從 3.0 調整）。偵測到句尾後，若 8 秒內有新內容到達，計時器被後者覆蓋，只有真正靜默 8 秒才觸發。給 Ollama 本機 LLM 足夠時間跑完上一次。</span>
+  </div>
+</section>
+
+<section id="v2-bidi">
+  <h2><span class="icon green-icon">↔️</span>雙向回覆</h2>
+
+  <h3>輸出格式</h3>
+  <p>AI 被要求以 JSON 格式輸出：</p>
+  <pre class="pink-border"><code>{<span class="st">"ja_reply"</span>: <span class="st">"日本語の返答（3〜4文）"</span>, <span class="st">"zh_reply"</span>: <span class="st">"中文草稿（對應翻譯）"</span>}</code></pre>
+
+  <h3>解析邏輯（_parse_bilingual）</h3>
+  <pre><code><span class="kw">def</span> <span class="fn">_parse_bilingual</span>(text: str) -> tuple[str, str]:
+    <span class="kw">try</span>:
+        m = re.search(<span class="st">r'\{[^{}]*"ja_reply"[^{}]*\}'</span>, text, re.DOTALL)
+        <span class="kw">if</span> m:
+            data = json.loads(m.group())
+            <span class="kw">return</span> data.get(<span class="st">"ja_reply"</span>, <span class="st">""</span>).strip(), data.get(<span class="st">"zh_reply"</span>, <span class="st">""</span>).strip()
+    <span class="kw">except</span> (json.JSONDecodeError, AttributeError):
+        <span class="kw">pass</span>
+    <span class="kw">return</span> text.strip(), <span class="st">""</span>  <span class="cm"># fallback: 全文 as ja_reply</span></code></pre>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠</span>
+    <span>Ollama streaming 時，<code>reply_chunk</code> 事件顯示的是<strong>原始累積文字</strong>（JSON 尚未完成），<code>reply_done</code> 後才解析並更新雙欄。這是設計意圖，不是 bug。</span>
+  </div>
+</section>
+
+<section id="v2-history">
+  <h2><span class="icon green-icon">🧠</span>對話歷史記憶</h2>
+
+  <h3>資料結構</h3>
+  <pre><code><span class="cm"># 全域，由 _history_lock 保護</span>
+_conversation_history: list[dict] = []
+
+<span class="cm"># 格式：OpenAI-compatible messages</span>
+[
+    {<span class="st">"role"</span>: <span class="st">"user"</span>,      <span class="st">"content"</span>: <span class="st">"以下は相手の発言です…"</span>},
+    {<span class="st">"role"</span>: <span class="st">"assistant"</span>, <span class="st">"content"</span>: <span class="st">'{"ja_reply":"…","zh_reply":"…"}'</span>},
+    <span class="cm">...</span>
+]</code></pre>
+
+  <h3>各 Provider 傳遞方式</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Provider</th><th>傳遞方式</th></tr>
+      <tr><td>Ollama</td><td><code>[{role:system}] + hist_msgs + [{role:user, current}]</code> → messages array</td></tr>
+      <tr><td>Anthropic</td><td><code>hist_msgs + [{role:user, current}]</code>，system 另傳</td></tr>
+      <tr><td>Gemini</td><td>歷史以文字串接 <code>"User: ...\nAssistant: ...\n"</code> 前綴</td></tr>
+    </table>
+  </div>
+
+  <h3>保留上限 &amp; 清除</h3>
+  <pre><code><span class="cm"># _poll() 中，reply_done 後更新</span>
+<span class="kw">if</span> len(_conversation_history) > MAX_HISTORY_TURNS * <span class="num">2</span>:
+    <span class="kw">del</span> _conversation_history[:-MAX_HISTORY_TURNS * <span class="num">2</span>]
+
+<span class="cm"># 清除按鈕</span>
+<span class="kw">def</span> <span class="fn">_clear_history</span>(self):
+    <span class="kw">with</span> _history_lock:
+        _conversation_history.clear()</code></pre>
+</section>
+
+<section id="v2-tts">
+  <h2><span class="icon green-icon">🔊</span>TTS 播放</h2>
+
+  <h3>依賴</h3>
+  <pre><code>pip install edge-tts</code></pre>
+
+  <h3>語音設定</h3>
+  <pre><code>TTS_VOICES = {
+    <span class="st">"ja"</span>: <span class="st">"ja-JP-NanamiNeural"</span>,
+    <span class="st">"zh"</span>: <span class="st">"zh-TW-HsiaoChenNeural"</span>,
+    <span class="st">"en"</span>: <span class="st">"en-US-JennyNeural"</span>,
+}</code></pre>
+
+  <h3>play_tts() 機制</h3>
+  <pre><code><span class="kw">async def</span> <span class="fn">_tts_save_async</span>(text, voice) -> str:
+    tmp = tempfile.NamedTemporaryFile(suffix=<span class="st">".mp3"</span>, delete=<span class="kw">False</span>)
+    communicate = _edge_tts.Communicate(text, voice)
+    <span class="kw">await</span> communicate.save(tmp.name)
+    <span class="kw">return</span> tmp.name
+
+<span class="kw">def</span> <span class="fn">play_tts</span>(text, lang=<span class="st">"ja"</span>):
+    <span class="kw">if not</span> _tts_lock.acquire(blocking=<span class="kw">False</span>):
+        <span class="kw">return</span>  <span class="cm"># skip if already playing</span>
+    <span class="kw">try</span>:
+        loop = asyncio.new_event_loop()
+        tmp_path = loop.run_until_complete(<span class="fn">_tts_save_async</span>(text, voice))
+        loop.close()
+        os.startfile(tmp_path)
+        time.sleep(<span class="num">90</span>); os.unlink(tmp_path)
+    <span class="kw">finally</span>:
+        _tts_lock.release()</code></pre>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ</span>
+    <span><code>_tts_lock</code> 使用 <code>blocking=False</code>，若已有 TTS 播放中，新的呼叫直接略過（不排隊）。</span>
+  </div>
+</section>
+
+<section id="v2-export">
+  <h2><span class="icon green-icon">📊</span>匯出逐字稿</h2>
+
+  <h3>記錄結構</h3>
+  <pre><code><span class="cm"># self._reply_sessions: list[dict]</span>
+{
+    <span class="st">"ts"</span>: <span class="st">"14:37:42"</span>,
+    <span class="st">"ja"</span>: <span class="st">"助かりました。"</span>,
+    <span class="st">"zh"</span>: <span class="st">"這很有幫助。"</span>,
+    <span class="st">"ja_reply"</span>: <span class="st">"はい、確認いたしました。"</span>,
+    <span class="st">"zh_reply"</span>: <span class="st">"好的，我已確認。"</span>
+}</code></pre>
+
+  <h3>匯出格式</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>格式</th><th>依賴</th><th>特色</th></tr>
+      <tr><td>Excel (.xlsx)</td><td>openpyxl</td><td>藍色標頭、自動欄寬（最寬 60 字元）</td></tr>
+      <tr><td>Word (.docx)</td><td>python-docx</td><td>表格格式，含匯出時間與筆數</td></tr>
+      <tr><td>TXT</td><td>內建</td><td>純文字，含所有欄位，UTF-8</td></tr>
+    </table>
+  </div>
+
+  <div class="callout ok">
+    <span class="callout-icon">✅</span>
+    <span>若 <code>self._reply_sessions</code> 為空（尚未生成回覆），匯出會 fallback 至當前 <code>_recent_lines</code>（只有翻譯，無 AI 回覆欄位）。</span>
+  </div>
+</section>
+
+<!-- ── v2.1 CHANGELOG ── -->
+<section id="v21">
+  <h2><span class="icon orange-icon">🔧</span>v2.1.0 異動記錄（2026-06-25）</h2>
+
+  <div class="chg-entry">
+    <div class="chg-type fix">BUG FIX</div>
+    <div class="chg-title">非雙向模式（ja2zh 等）監控來源指向昨日舊檔</div>
+    <div class="chg-body">
+      <strong>根因：</strong><code>_find_latest_log()</code> glob 寫死 <code>日中雙向_逐字稿_*.txt</code>，只找 ja_zh 模式。
+      ja2zh 模式寫出 <code>日翻中_逐字稿_*.txt</code>，找不到當日檔 → 落回 mtime 最近的舊檔（昨日）。<br>
+      <strong>修法：</strong>glob 改為 <code>*逐字稿_*.txt</code>，涵蓋所有翻譯模式。
+    </div>
+  </div>
+
+  <div class="chg-entry">
+    <div class="chg-type fix">BUG FIX</div>
+    <div class="chg-title">非雙向模式翻譯內容不顯示（LINE_RE 不匹配）</div>
+    <div class="chg-body">
+      <strong>根因：</strong><code>LINE_RE</code> 強制要求 <code>[▶◀]</code> 方向符號。雙向模式（ja_zh）有此符號；
+      單向模式（ja2zh 等）格式為 <code>[HH:MM:SS] [日] text</code>，無方向符號 → regex 不匹配 → 解析 0 筆。<br>
+      <strong>修法：</strong><code>[▶◀]</code> 改為 optional group <code>(?:[▶◀]\s*)?</code>，向下相容兩種格式。
+    </div>
+  </div>
+
+  <div class="chg-entry">
+    <div class="chg-type feat">FEATURE</div>
+    <div class="chg-title">上下可調整版面（ttk.PanedWindow）</div>
+    <div class="chg-body">
+      即時翻譯區與建議回覆區改用 <code>ttk.PanedWindow(orient="vertical")</code>。
+      拖曳 sash 可自由調整上下比例（預設 weight=3:2）。
+      建議回覆移除固定 <code>height=4</code>，隨 pane 伸縮。
+    </div>
+  </div>
+
+  <div class="chg-entry">
+    <div class="chg-type tune">TUNING</div>
+    <div class="chg-title">MAX_SENTENCES 7 → 30，AUTO_TRIGGER_DEBOUNCE 3.0 → 8.0</div>
+    <div class="chg-body">
+      取用更完整的對話脈絡（最近 30 句 / 10 分鐘）。
+      自動觸發 debounce 從 3 秒調整為 8 秒，讓本機 Ollama LLM 有足夠時間完成上一次生成再觸發下一次。
+    </div>
+  </div>
+
+  <h3>對應 diff 摘要</h3>
+  <div class="diff-block">
+    <div class="diff-header">sei_reply_assistant.py — 4 處修改</div>
+    <div class="diff-line removed">- LINE_RE = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s*[▶◀]\s*\[([日中])\]\s*(.+)$')</div>
+    <div class="diff-line added">+ LINE_RE = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s*(?:[▶◀]\s*)?\[([日中])\]\s*(.+)$')</div>
+    <div class="diff-line neutral" style="padding-top:6px"></div>
+    <div class="diff-line removed">- MAX_SENTENCES         = 7</div>
+    <div class="diff-line added">+ MAX_SENTENCES         = 30</div>
+    <div class="diff-line removed">- AUTO_TRIGGER_DEBOUNCE = 3.0</div>
+    <div class="diff-line added">+ AUTO_TRIGGER_DEBOUNCE = 8.0</div>
+    <div class="diff-line neutral" style="padding-top:6px"></div>
+    <div class="diff-line removed">- files.extend(glob.glob(os.path.join(d, "日中雙向_逐字稿_*.txt")))</div>
+    <div class="diff-line added">+ files.extend(glob.glob(os.path.join(d, "*逐字稿_*.txt")))</div>
+    <div class="diff-line neutral" style="padding-top:6px"></div>
+    <div class="diff-line removed">- trans_outer.pack(fill="both", expand=True, padx=6, pady=(5, 0))</div>
+    <div class="diff-line removed">- reply_outer.pack(fill="x", padx=6, pady=(2, 2))</div>
+    <div class="diff-line added">+ main_pane = ttk.PanedWindow(self.root, orient="vertical")</div>
+    <div class="diff-line added">+ main_pane.add(trans_outer, weight=3)</div>
+    <div class="diff-line added">+ main_pane.add(bottom_frame, weight=2)</div>
+    <div class="diff-line added">+ reply_outer.pack(fill="both", expand=True, pady=(2, 2))</div>
+  </div>
+</section>
+
+<!-- ── v2.16.7 ── -->
+<section id="v2167">
+  <h2><span class="icon orange-icon">🔧</span>jt-live-whisper v2.16.7 異動記錄（2026-06-25）</h2>
+
+  <div class="chg-entry">
+    <div class="chg-type feat">FEATURE</div>
+    <div class="chg-title">新增 Whisper medium 模型選項</div>
+    <div class="chg-body">
+      <code>WHISPER_MODELS</code> 清單加入 <code>medium</code>（faster-whisper CTranslate2 格式，~1.4 GB）。<br>
+      medium 屬於 <code>_PROMPT_CAPABLE_MODELS</code>，<code>initial_prompt = "以下は日本語の音声です。"</code> 自動啟用。<br>
+      適用場景：CPU-only 機器日文整句錯誤率過高，speed/accuracy 平衡方案（CPU ~8–12s，vs small ~2–3s / large-v3-turbo ~18s）。
+    </div>
+  </div>
+
+  <div class="chg-entry">
+    <div class="chg-type feat">FEATURE</div>
+    <div class="chg-title">build_bundle.ps1 整合 pyinstaller 重建流程</div>
+    <div class="chg-body">
+      原腳本需手動預先建置 <code>dist\jt-live-whisper-offline\</code>；現在改為 Step 1 自動執行 <code>venv\Scripts\pyinstaller jt_live_whisper.spec</code>，完成後 rename <code>dist\jt-live-whisper\</code> → <code>dist\jt-live-whisper-offline\</code>，再接原有 Step 2–6。
+    </div>
+  </div>
+
+  <h3>CPU-only 機器 Whisper 模型選擇建議</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>模型</th><th>大小</th><th>CPU 耗時（估）</th><th>initial_prompt</th><th>適用場景</th></tr>
+      <tr><td><code>small</code></td><td>464 MB</td><td>~2–3s</td><td>❌ 停用</td><td>低延遲，容忍較高錯誤率</td></tr>
+      <tr><td><strong><code>medium</code></strong></td><td>~1.4 GB</td><td>~8–12s</td><td>✅ 啟用</td><td><strong>CPU 推薦，準確度明顯提升</strong></td></tr>
+      <tr><td><code>large-v3-turbo</code></td><td>~809 MB</td><td>~15–20s</td><td>✅ 啟用</td><td>需 GPU，CPU 太慢</td></tr>
+      <tr><td><code>large-v3</code></td><td>~3.1 GB</td><td>&gt;30s</td><td>✅ 啟用</td><td>GPU server 專用</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── BUNDLE ── -->
+<section id="bundle">
+  <h2><span class="icon green-icon">📦</span>打包 &amp; 發布</h2>
+
+  <div class="quick-grid">
+    <div class="qc"><div class="qc-label">Bundle 大小</div><div class="qc-val">~3.6 GB</div></div>
+    <div class="qc"><div class="qc-label">SEI exe</div><div class="qc-val">PyInstaller 6.21 onedir</div></div>
+    <div class="qc"><div class="qc-label">JTW exe</div><div class="qc-val">jt-live-whisper-offline</div></div>
+    <div class="qc"><div class="qc-label">ASR 模型</div><div class="qc-val">Whisper small (464 MB) + medium (~1.4 GB)</div></div>
+    <div class="qc"><div class="qc-label">翻譯模型</div><div class="qc-val">NLLB-600M int8 (617 MB)</div></div>
+    <div class="qc"><div class="qc-label">需要網路</div><div class="qc-val">否（完全離線）</div></div>
+  </div>
+
+  <pre class="green-border"><code><span class="cm"># 在 C:\jt-live-whisper\ 執行</span>
+powershell -ExecutionPolicy Bypass -File build_bundle.ps1</code></pre>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠</span>
+    <span>v2 新增 <code>edge-tts</code>、<code>python-docx</code>、<code>openpyxl</code> 依賴，若要打包為 exe 需確認這些套件已加入 PyInstaller spec 的 <code>hiddenimports</code>。</span>
+  </div>
+</section>
+
+<!-- ── BUNDLE DIST ── -->
+<section id="bundle-dist">
+  <h2><span class="icon green-icon">🚀</span>發布給使用者</h2>
+
+  <h3>首次安裝（新客戶）</h3>
+  <div class="callout info" style="margin-bottom:12px">
+    <span class="callout-icon">📥</span>
+    <span><strong>SEI_Bundle 離線主檔</strong>（~3.6 GB）：<a href="https://drive.google.com/file/d/1bSdbysjpoS4SY2S5EBkGdSgtHEugRPPw/view?usp=sharing" style="color:var(--cyan)">Google Drive 下載連結</a></span>
+  </div>
+  <ul class="steps">
+    <li>下載並解壓縮 SEI_Bundle 到目標機</li>
+    <li>直接執行 <strong>SEI_Reply_Assistant.exe</strong></li>
+    <li>點擊 <strong>🎙 開啟即時翻譯</strong>，選擇翻譯模式，選 <code>small</code>（快）或 <code>medium</code>（準確）</li>
+    <li>等待 jt-live-whisper 載入模型（首次約 30–60 秒）</li>
+  </ul>
+
+  <h3>後續更新（自動）</h3>
+  <pre class="green-border"><code><span class="cm"># 開發端發布新版本：</span>
+git tag v2.x.x
+git push origin v2.x.x
+<span class="cm"># → GitHub Actions 自動 build → 上傳 sei_reply_assistant_v2.x.x.zip</span>
+<span class="cm"># → 客戶端啟動時自動偵測 → 對話框詢問 → 一鍵下載安裝重啟</span></code></pre>
+
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>對象</th><th>更新內容</th><th>方式</th></tr>
+      <tr><td>新客戶</td><td>完整 SEI_Bundle（JTW + 模型 + SEI）</td><td>手動發送（OneDrive / 隨身碟）</td></tr>
+      <tr><td>既有客戶</td><td>SEI exe + _internal（~100 MB）</td><td>自動 — 啟動時偵測 GitHub releases</td></tr>
+      <tr><td>JTW 模型升級</td><td>重新打包 SEI_Bundle</td><td>手動（模型不常變動）</td></tr>
+    </table>
+  </div>
+
+  <div class="callout ok">
+    <span class="callout-icon">✅</span>
+    <span>即時翻譯功能（ASR + NLLB 翻譯）完全離線，無需 Python、網路、Ollama。AI 回覆建議若要免費則需 Ollama。自訂 Profile 使用獨特檔名避免更新覆蓋。</span>
+  </div>
+</section>
+
+<!-- ── UI ── -->
+<section id="ui">
+  <h2><span class="icon">🖥</span>UI 元件對照</h2>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>元件屬性</th><th>對應變數</th><th>更新時機</th></tr>
+      <tr><td>即時翻譯 左窗（日文）</td><td><code>self._trans_ja</code></td><td><code>transcript_add</code> event</td></tr>
+      <tr><td>即時翻譯 右窗（中文）</td><td><code>self._trans_zh</code></td><td><code>transcript_update_zh</code> event</td></tr>
+      <tr><td>AI 日文回覆</td><td><code>self._reply_ja</code></td><td><code>reply_chunk</code>（preview）/ <code>reply_done</code></td></tr>
+      <tr><td>中文草稿</td><td><code>self._reply_zh</code></td><td><code>reply_done</code> 解析後</td></tr>
+      <tr><td>狀態列</td><td><code>self._status_var</code></td><td><code>status</code> event</td></tr>
+      <tr><td>生成按鈕</td><td><code>self._gen_btn</code></td><td><code>gen_done</code> event 解鎖</td></tr>
+      <tr><td>歷史輪數顯示</td><td><code>self._history_count_var</code></td><td><code>reply_done</code> 後更新</td></tr>
+      <tr><td>自動觸發 checkbox</td><td><code>self._auto_reply_var</code></td><td>使用者互動</td></tr>
+      <tr><td>TTS auto checkbox</td><td><code>self._tts_auto_var</code></td><td>使用者互動</td></tr>
+      <tr><td>jt-live-whisper 狀態</td><td><code>self._jtw_status_var</code></td><td><code>_check_jtw_status()</code> 每 3 秒</td></tr>
+    </table>
+  </div>
+
+  <h3>Event Types（_ui_queue）</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>type</th><th>payload keys</th><th>來源</th></tr>
+      <tr><td><code>status</code></td><td><code>text</code></td><td>log_monitor / call_ai</td></tr>
+      <tr><td><code>transcript_add</code></td><td><code>ts, ja, zh, has_sentence_end</code></td><td>log_monitor（[日] 行）</td></tr>
+      <tr><td><code>transcript_update_zh</code></td><td><code>ts, zh</code></td><td>log_monitor（[中] 行）</td></tr>
+      <tr><td><code>reply_chunk</code></td><td><code>text</code></td><td>call_ollama_stream（原始累積，未解析 JSON）</td></tr>
+      <tr><td><code>reply_done</code></td><td><code>ja_reply, zh_reply, ja_block, zh_block</code></td><td>call_ai thread（解析後結果）</td></tr>
+      <tr><td><code>gen_done</code></td><td>—</td><td>call_ai thread finally block</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── BUGS ── -->
+<section id="bugs">
+  <h2><span class="icon">🐛</span>已知問題</h2>
+
+  <div class="card">
+    <div class="card-title orange">ja2zh 等單向模式翻譯不顯示</div>
+    <p><strong>已於 v2.1.0 修正。</strong>根因：<code>LINE_RE</code> 強制 <code>[▶◀]</code> + <code>_find_latest_log()</code> glob 只找 <code>日中雙向_*</code>。<span class="pill pill-done">FIXED v2.1</span></p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">transcript_update_zh 行號計算</div>
+    <p><code>line_no * 3 - 1</code> 假設每筆記錄精確佔 3 行。若日文原文換行，行號偏移導致「…」替換失敗。<span class="pill pill-bug">BUG</span></p>
+    <p><strong>修法方向：</strong> 改用 tkinter Text widget 的 <code>mark</code> 或 tag 機制標記每筆記錄位置。</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ollama 首次冷啟動</div>
+    <p>qwen2.5:7b 首次載入需 30-60s，看似 timeout。第二次起快很多。<span class="pill pill-warn">WARN</span></p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">TTS 暫存檔清除時機</div>
+    <p>TTS 音訊存為 temp MP3，<code>os.startfile()</code> 後 <code>sleep(90)</code> 再刪除。若音訊超過 90 秒，刪除時可能仍在播放（Windows 會拒絕刪除）。靜默忽略 <code>OSError</code>。<span class="pill pill-warn">WARN</span></p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">AI 未返回 JSON 時 zh_reply 為空</div>
+    <p><code>_parse_bilingual()</code> fallback 時 <code>zh_reply=""</code>，中文草稿欄位顯示空白。可透過調整 system_prompt 提高 JSON 輸出成功率。<span class="pill pill-todo">TODO</span></p>
+  </div>
+</section>
+
+<!-- ── TODO ── -->
+<section id="todo">
+  <h2><span class="icon">🗺</span>待辦 / 延伸方向</h2>
+
+  <h3>v2.1 已完成</h3>
+  <ul>
+    <li><strong>log monitor 修正</strong> — 所有翻譯模式均可正確監控 <span class="pill pill-done">DONE v2.1</span></li>
+    <li><strong>LINE_RE 修正</strong> — 單向模式（ja2zh 等）翻譯正確顯示 <span class="pill pill-done">DONE v2.1</span></li>
+    <li><strong>可調整版面</strong> — PanedWindow 上下 sash <span class="pill pill-done">DONE v2.1</span></li>
+    <li><strong>回覆取用範圍擴大</strong> — MAX_SENTENCES 7 → 30 <span class="pill pill-done">DONE v2.1</span></li>
+    <li><strong>自動觸發 debounce 調整</strong> — 3s → 8s <span class="pill pill-done">DONE v2.1</span></li>
+  </ul>
+
+  <h3>v2 已完成功能</h3>
+  <ul>
+    <li><strong>自動觸發模式</strong> — 句尾標點偵測 + debounce <span class="pill pill-done">DONE v2</span></li>
+    <li><strong>雙向回覆</strong> — AI 日文回覆 + 中文草稿（JSON 格式）<span class="pill pill-done">DONE v2</span></li>
+    <li><strong>對話歷史記憶</strong> — 多輪對話，最多 10 輪 <span class="pill pill-done">DONE v2</span></li>
+    <li><strong>TTS 播放回覆</strong> — edge-tts，日文 / 中文語音 <span class="pill pill-done">DONE v2</span></li>
+    <li><strong>匯出逐字稿</strong> — Excel / Word / TXT <span class="pill pill-done">DONE v2</span></li>
+  </ul>
+
+  <h3>技術改善</h3>
+  <ul>
+    <li>用 <code>psutil</code> 取代 PowerShell <code>Get-Process</code>，改善 jt-live-whisper 狀態偵測效能 <span class="pill pill-todo">TODO</span></li>
+    <li>修正 <code>_transcript_update_zh</code> 行號計算，改用 tag 機制 <span class="pill pill-bug">BUG</span></li>
+    <li>更換 TTS 清理機制（改用監聽播放完成事件而非固定 sleep）<span class="pill pill-todo">TODO</span></li>
+  </ul>
+
+  <h3>功能延伸</h3>
+  <ul>
+    <li>Profile 版本化（system_prompt 含 JSON 格式指示的遷移工具）<span class="pill pill-todo">TODO</span></li>
+    <li>v2 打包（更新 build_bundle.ps1 加入 edge-tts 等新依賴）<span class="pill pill-todo">TODO</span></li>
+  </ul>
+</section>
+
+</main>
+</div>
